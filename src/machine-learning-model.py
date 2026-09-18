@@ -1,16 +1,12 @@
 """
 machine-learning-model.py
 
-Machine learning pipeline for the Inrange Golf Competition.
-Performs:
-  - Physics-informed feature engineering (kinematics, Magnus lift proxy, drag deceleration,
-    segment curvatures, polynomial trajectory extrapolation).
-  - 5-Fold Cross-Validation across all 9 competition targets.
-  - Multi-model ensemble fusing LightGBM, XGBoost, and CatBoost regressors.
-  - Out-of-fold validation reporting and feature importance visualization.
-  - Test set prediction export adhering to submission format.
-
-Author: Inrange Competition Participant
+Machine learning models for the Inrange Golf Competition.
+It calculates:
+  - Helpful features from ball launch speed, angles, and checkpoints.
+  - 5-fold cross-validation across all 9 target predictions.
+  - Tree-based models using LightGBM and CatBoost.
+  - Predictions for apex, landing, and launch spin rate.
 """
 
 import os
@@ -34,12 +30,11 @@ TARGET_COLUMNS = [
 
 def extract_ml_features(df):
     """
-    Extracts rich physics-informed kinematic and trajectory features from
-    launch conditions and the 4 checkpoint observations.
+    Calculates helpful features from ball launch conditions and checkpoints.
     """
     feats = pd.DataFrame(index=df.index)
 
-    # 1. Raw Launch Kinematics
+    # 1. Launch speed and angles
     vx0 = df['launch_vx']
     vy0 = df['launch_vy']
     vz0 = df['launch_vz']
@@ -56,8 +51,7 @@ def extract_ml_features(df):
     feats['launch_ke_xy'] = 0.5 * vxy0**2
     feats['launch_vz_ratio'] = vz0 / (vtot0 + 1e-8)
 
-    # Shot-Regime / Club Inference Prior: Regime = vz0 / vtot0^2
-    # Delineates high-speed low-spin drivers from low-speed high-spin wedges
+    # Club type indicator: separates fast low-spin drivers from slower high-spin wedges
     feats['regime_launch_efficiency'] = vz0 / (vtot0**2 + 1e-6)
     feats['regime_ratio_vxy'] = vz0 / (vxy0 + 1e-6)
     feats['kinetic_loft_ratio'] = (vz0**2) / (vtot0**2 + 1e-6)

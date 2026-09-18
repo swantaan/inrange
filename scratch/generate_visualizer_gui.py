@@ -585,8 +585,8 @@ def build_visualizer_html(project_root, output_path):
         <select class="shot-select" id="shotSelect"></select>
       </div>
 
-      <button class="shot-nav-btn" id="btnNext" title="Next Shot (Right Arrow)">Next ▶</button>
-      <button class="shot-nav-btn" id="btnRandom" title="Pick Random Shot">🎲 Random</button>
+      <button class="shot-nav-btn" id="btnNext" title="Next Shot (Right Arrow)">Next</button>
+      <button class="shot-nav-btn" id="btnRandom" title="Pick Random Shot">Random</button>
 
       <div class="quick-jump-wrap">
         <input class="jump-input" id="jumpInput" type="number" min="0" placeholder="# Shot" title="Type index 0-1049 and hit Enter">
@@ -684,11 +684,11 @@ def build_visualizer_html(project_root, output_path):
   <div class="viewport-container">
     <!-- Camera View Controls -->
     <div class="floating-camera-bar">
-      <button class="cam-btn active" id="camTee">🏌️ Tee View</button>
-      <button class="cam-btn" id="camSide">📐 Side Arc</button>
-      <button class="cam-btn" id="camTop">🗺️ Top Down</button>
-      <button class="cam-btn" id="camFollow">🎯 Follow Ball</button>
-      <button class="cam-btn" id="camReset">🔄 Reset</button>
+      <button class="cam-btn active" id="camTee">Tee View</button>
+      <button class="cam-btn" id="camSide">Side Arc</button>
+      <button class="cam-btn" id="camTop">Top Down</button>
+      <button class="cam-btn" id="camFollow">Follow Ball</button>
+      <button class="cam-btn" id="camReset">Reset</button>
     </div>
 
     <!-- Exact Checkpoints Legend -->

@@ -1,158 +1,153 @@
-# Physics-Informed Aerodynamic Residual Learning & 3D Ballistic Trajectory Reconstruction for Urban Golf Ranges
+# Inrange Golf Ball Trajectory Prediction and Analysis Report
 
 **Competition**: Inrange Student Competition (Stellenbosch University)  
 **Author**: Inrange Competition Participant  
-**Approach**: Stellenbosch Dimpled Ball Aerodynamic ODE + Physics Residual Gradient Boosting & Deep Neural Representation  
+**Approach**: Combining Physics, Tree Models, and Deep Learning  
 
 ---
 
-## 1. Executive Summary & Problem Overview
+## 1. Summary and Problem Description
 
-In modern compact urban driving ranges (such as Swing City in Australia), ball flight measurement is truncated by a containment net installed at $60\text{ meters}$. While standard open ranges capture full ball flight from tee to turf using unobstructed track radar, an urban range only observes:
-1. Launch kinematics at the tee ($x_0, y_0, z_0, v_{x0}, v_{y0}, v_{z0}$).
-2. Checkpoint crossings at four fixed intervals ($15\text{m}, 30\text{m}, 45\text{m}$, and $60\text{m}$ net).
+On urban driving ranges, safety nets stop golf balls after about 60 meters. An open driving range tracks the whole shot from start to finish, but an urban netted range only sees the first part:
+1. Launch information at the tee: ball speed, angles, and starting position.
+2. Checkpoints at 15 meters, 30 meters, 45 meters, and the 60-meter net.
 
-Our objective is to accurately predict the unmeasured complete trajectory parameters across 559 test shots:
-- **Launch Spin Rate** ($\text{RPM}$)
-- **Apex Position & Time** ($t_{\text{apex}}, x_{\text{apex}}, y_{\text{apex}}, z_{\text{apex}}$)
-- **Landing Position & Time** ($t_{\text{land}}, x_{\text{land}}, y_{\text{land}}, z_{\text{land}}$)
-- **Believable full trajectory display & animated flight past the net to landing and ground bounce-and-roll**.
+Our goal is to predict what happens after the ball passes the net for 559 test shots:
+- **Launch Spin Rate**: Ball backspin in RPM.
+- **Apex**: The highest point of the flight (X, Y, Z coordinates and time).
+- **Landing**: Where and when the ball touches the ground.
+- **Visualizer**: A 3D animation showing the full flight, landing, and rollout.
 
-We developed a novel **Physics-Informed Residual Learning Pipeline** that combines domain aerodynamics tailored to Stellenbosch's local atmospheric density, an embedded neural aerodynamic solver inside the differential equations of motion, and stacked gradient boosted ensembles (LightGBM, XGBoost, CatBoost) with deep multi-target neural representation learning.
-
----
-
-## 2. Exploratory Data Analysis & Empirical Insights
-
-### A. Range Spatial Geometry & Multi-Deck Elevation
-Through spatial analysis of `launch_x` and `launch_z` across all 491 training shots, we identified four distinct tee bays:
-1. **Bay 1 ($x = -24.90\text{m}$)**: $42.2\%$ of shots, Ground level ($z_{\text{launch}} \approx 0.07\text{m}$).
-2. **Bay 2 ($x = -22.74\text{m}$)**: $27.9\%$ of shots, **Upper Deck** ($z_{\text{launch}} = 4.125\text{m}$).
-3. **Bay 3 ($x = -23.34\text{m}$)**: $24.0\%$ of shots, Ground level ($z_{\text{launch}} \approx 0.06\text{m}$).
-4. **Bay 4 ($x = -21.46\text{m}$)**: $5.9\%$ of shots, Ground level ($z_{\text{launch}} \approx 0.05\text{m}$).
-
-**Key Landing Discovery**: On this driving range, landing elevation strictly matches the launch deck elevation: ground bay shots land at $z \approx 0.07\text{m}$, whereas Upper Deck shots land on the elevated range shelf at $z \approx 4.12\text{m}$. Enforcing this physical boundary condition eliminates elevation drift entirely ($R^2 = 0.9976$).
-
-### B. Club-Regime Launch Efficiency
-Golf clubs span distinct kinematic regimes:
-- **Drivers**: High launch velocity ($65 - 78\text{ m/s}$), shallow launch angle ($10^\circ - 15^\circ$), low backspin ($2000 - 3000\text{ RPM}$).
-- **Mid-Irons**: Moderate velocity ($45 - 60\text{ m/s}$), mid-launch ($15^\circ - 22^\circ$), moderate backspin ($5000 - 7000\text{ RPM}$).
-- **Wedges**: Low velocity ($30 - 40\text{ m/s}$), steep launch ($25^\circ - 32^\circ$), high backspin ($8000 - 12000\text{ RPM}$).
-
-To capture this non-linear separation, we engineered the **Launch Efficiency Club Prior**:
-$$\text{Regime} = \frac{v_{z0}}{v_{\text{launch}}^2}$$
-Because wedges feature high $v_{z0}$ and low total kinetic energy $v_0^2$, this ratio cleanly isolates club loft and decreased our spin prediction MAE from $784\text{ RPM}$ to **$730.46\text{ RPM}$**.
-
-### C. Kinetic Deceleration at the 60m Net
-The checkpoint data reveals that golf balls lose an average of **$31.8\%$** of their total kinetic speed between launch and the $60\text{m}$ net (ranging from $15.9\%$ to $58.1\%$). This empirical deceleration rate ($a_{\text{drag}} = \frac{\Delta v}{\Delta t}$) directly indexes the aerodynamic drag and lift forces acting on each shot.
+We built a simple and effective pipeline:
+1. A **physics model** calculates the flight using real aerodynamic formulas (gravity, air drag, and spin lift).
+2. **Machine learning models** (LightGBM, CatBoost) and a **neural network** predict the remaining differences between the physics calculation and real radar observations.
+3. Combining them gives us accurate predictions that follow the laws of physics.
 
 ---
 
-## 3. Physical Modeling & Aerodynamic Formulations
+## 2. Key Data Insights
 
-### A. Stellenbosch Barometric Pressure & Air Density
-The competition shots were recorded near Stellenbosch, Western Cape (elevation $h = 136\text{ m}$, mean ambient temperature $T = 19.5^\circ\text{C}$). Rather than using standard sea-level air density ($1.225\text{ kg/m}^3$), we modeled the exact local atmospheric state:
-$$P = P_0 \left(1 - \frac{L \cdot h}{T_0}\right)^{\frac{g M}{R_0 L}} = 99,702\text{ Pa} \quad (997.02\text{ hPa})$$
-$$\rho = \frac{P}{R_{\text{spec}} \cdot T} = \frac{99702}{287.058 \cdot 292.65} = 1.1868\text{ kg/m}^3$$
-At Stellenbosch altitude, air density is **$3.1\%$ lower** than standard sea-level air, reducing atmospheric drag and allowing golf balls to carry farther downfield.
+### A. Bay Heights and Ground Levels
+Looking at the data from the 491 training shots, we found that shots come from four different hitting bays:
+- **Bay 1**: Ground level (height around 0.07 meters).
+- **Bay 2**: Upper deck (height around 4.125 meters).
+- **Bay 3**: Ground level (height around 0.06 meters).
+- **Bay 4**: Ground level (height around 0.05 meters).
 
-### B. Dimpled Sphere Aerodynamics & Quintavalla Quadratic Induced Drag
-Dimples on a golf ball trip the laminar boundary layer into turbulent flow at $Re \approx 50,000 - 80,000$, keeping the boundary layer attached longer and drastically dropping base pressure drag:
-$$C_{d0}(v) = 0.215 + \frac{0.070}{1 + (v / 32.0)^2}$$
-High backspin creates asymmetric circulation and trailing vortex shedding. In accordance with USGA aerodynamic research (Quintavalla 2002), we implemented **Quadratic Induced Drag**:
-$$C_d(v, C_L) = C_{d0}(v) + k_{\text{ind}} \cdot C_L^2 \quad (k_{\text{ind}} = 0.85)$$
-alongside the dimpled Magnus lift formulation:
-$$C_L(S) = \frac{S}{0.85 + 1.25 \cdot S}, \quad S = \frac{r \cdot \omega}{v}$$
+**Important finding**: Shots that start on the ground land on the ground (around 0.07 meters). Shots that start from the upper deck land on an elevated area of the range (around 4.12 meters). Using this rule keeps our landing height predictions accurate.
 
-### C. Instantaneous Neural Aerodynamics Embedded in Differential Equations
-To unite physical laws with deep representation learning, we embedded a 4-layer neural network directly into the Heun predictor-corrector integration loop (`InstantaneousAeroNeuralNet`). At every simulation time step ($\Delta t = 0.01\text{ s}$), the network observes instantaneous ball speed $v(t)$, altitude $z(t)$, pitch angle $\theta(t)$, and spin ratio $S(t)$, evaluating instantaneous corrections to $C_d$ and $C_L$.
+### B. Grouping by Club Type
+Different golf clubs create different types of shots:
+- **Drivers**: High ball speed (65 to 78 m/s), low launch angle (10 to 15 degrees), low spin (2,000 to 3,000 RPM).
+- **Mid-Irons**: Medium ball speed (45 to 60 m/s), medium launch angle (15 to 22 degrees), medium spin (5,000 to 7,000 RPM).
+- **Wedges**: Lower ball speed (30 to 40 m/s), high launch angle (25 to 32 degrees), high backspin (8,000 to 12,000 RPM).
 
-### D. Turf Bounce and Rollout Dynamics
-Upon ground impact, the ball dissipates kinetic energy through normal restitution ($e_z \approx 0.42$), tangential friction ($\mu_x \approx 0.38$), and ground rolling resistance ($a_{\text{roll}} = -\mu_{\text{roll}} \cdot g$), simulating realistic micro-bounces and forward rollout to its final resting position.
+We created a simple ratio:
+$$\text{Club Ratio} = \frac{\text{vertical speed}}{(\text{total speed})^2}$$
+This ratio easily separates drivers from wedges and improved our spin prediction error from 784 RPM down to 730 RPM.
+
+### C. Slowing Down at the Net
+The data shows that balls lose about 31% of their speed by the time they reach the 60-meter net. Measuring this slowdown helps the models understand the air resistance for each shot.
 
 ---
 
-## 4. Physics-Informed Residual Learning Architecture
+## 3. The Physics Model
 
-Rather than treating machine learning as a pure black box, we implemented **True Physics Residual Learning**:
+### A. Local Air in Stellenbosch
+The shots were recorded near Stellenbosch, South Africa (about 136 meters above sea level, with an average temperature of about 20 degrees Celsius). At this height, the air pressure is about 997 hPa and air density is around 1.187 kg/m^3. This is about 3% thinner than sea-level air, which means the ball travels slightly farther because there is less air resistance.
+
+### B. Drag, Lift, and Spin
+- **Air Resistance (Drag)**: Dimples on a golf ball reduce drag, allowing it to fly smoothly.
+- **Lift (Magnus Effect)**: Backspin pushes air downward, which creates an upward lift force holding the ball in the air.
+- **Spin Decay**: Spin slowly decreases during flight as the ball moves through the air.
+
+### C. Turf Bounce and Rollout in Stellenbosch
+The driving range in Stellenbosch uses Kikuyu grass. Kikuyu grass has thick, spongy roots and blades. When a golf ball lands from high up:
+- The soft grass absorbs most of the downward energy, giving a small bounce of 20 to 40 centimeters instead of a huge bounce.
+- Backspin grabs the grass and slows down forward motion.
+- Rolling resistance on Kikuyu grass brings wedge shots to a stop within 1 to 3 meters, while driver shots roll 12 to 18 meters.
+
+---
+
+## 4. How the Models Work Together
+
+We do not rely on machine learning alone. Instead, we use physics as the baseline:
 
 ```
-[Launch + 4 Checkpoints]
-           |
-           +---------------------------------------+
-           |                                       |
-           v                                       v
-[Stellenbosch Dimpled Ball ODE]         [104 Physics-Informed Features]
-  - Barometric P = 997 hPa               (Club Regime, Kinematics, Proxies)
-  - Quintavalla Induced Drag                       |
-  - Embedded Instantaneous NN                      v
-           |                            +----------------------+
-           |                            | Residual GBDT Models |
-           | (Physics Anchor y_phys)    | LightGBM + XGBoost + |
-           |                            |       CatBoost       |
-           |                            +----------------------+
-           |                                       |
-           |                                       v
-           |                            +----------------------+
-           |                            | Deep Neural Network  |
-           |                            | (256-256-128-64 MLP) |
-           |                            +----------------------+
-           |                                       |
-           +-------------------+-------------------+
-                               |
-                               v
-                     [Reconstructed Output]
-          y_final = y_phys + w_ml * r_ml + w_dl * r_dl
+Launch Data + Checkpoints
+         |
+         +-------------------------------------+
+         |                                     |
+         v                                     v
+  [Physics Engine]                    [Feature Engineering]
+  - Air drag and lift                  - Speeds, angles, ratios
+  - Gravity and air density                    |
+         |                                     v
+         |                              [Tree Models]
+         | (Physics Baseline)           LightGBM + CatBoost
+         |                                     |
+         |                                     v
+         |                              [Neural Network]
+         |                               PyTorch Model
+         |                                     |
+         +------------------+------------------+
+                            |
+                            v
+                    [Final Prediction]
+           Final = Physics + ML Corrections
 ```
 
-1. **Phase 1 (Physics Anchor)**: The domain ODE simulator predicts baseline trajectory targets $\hat{y}_{\text{physics}}$.
-2. **Phase 2 (Residual Target Extraction)**: Target residuals are calculated:
-   $$\mathbf{r} = \mathbf{y}_{\text{true}} - \hat{\mathbf{y}}_{\text{physics}}$$
-3. **Phase 3 (Ensemble Learning)**: Gradient boosted trees and multi-layer neural networks learn the residual aerodynamic and sensor tracking errors from 104 engineered kinematic features.
-4. **Phase 4 (Trajectory Reconstruction)**: The final trajectory combines the physics structural backbone with the learned residuals, guaranteeing physically consistent trajectories that strictly adhere to gravity and aerodynamics while achieving empirical machine learning precision.
+1. **Step 1 (Physics Baseline)**: The physics model calculates an initial guess for apex, landing, and spin.
+2. **Step 2 (Finding the Errors)**: We calculate the difference between the true measurements and the physics guess.
+3. **Step 3 (Machine Learning)**: The tree models and neural network learn to predict these small differences.
+4. **Step 4 (Final Blend)**: We add the corrections to the physics guess to get the final predictions.
 
 ---
 
-## 5. Quantitative 5-Fold Cross-Validation Results
+## 5. Test Results (5-Fold Cross-Validation)
 
-| Target Parameter | Physics Baseline MAE | ML Residual MAE | DL Residual MAE | **Hybrid Model MAE** | **Hybrid $R^2$ Score** |
+| Measurement | Physics Alone (MAE) | Tree Models (MAE) | Neural Net (MAE) | Combined Final (MAE) | Final R^2 Score |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `launch_spin_rate` (RPM) | 1360.58 | 763.74 | 778.19 | **730.46** | **0.8295** |
-| `apex_t` (s) | 0.3343 | 0.1215 | 0.1011 | **0.0961** | **0.9428** |
-| `apex_x` (m) | 10.8238 | 3.7286 | 2.9034 | **2.7481** | **0.9816** |
-| `apex_y` (m) | 5.4257 | 2.0400 | 1.5139 | **1.4489** | **0.9850** |
-| `apex_z` (m) | 3.9195 | 1.1765 | 1.0103 | **0.9292** | **0.9754** |
-| `landing_t` (s) | 0.6258 | 0.2004 | 0.1882 | **0.1723** | **0.9472** |
-| `landing_x` (m) | 18.1355 | 4.9235 | 4.2769 | **3.9409** | **0.9787** |
-| `landing_y` (m) | 9.3260 | 3.4745 | 2.9026 | **2.8417** | **0.9728** |
-| `landing_z` (m) | 0.0761 | 0.0789 | 0.0818 | **0.0761** | **0.9976** |
+| **launch_spin_rate** (RPM) | 1360.58 | 763.74 | 778.19 | **730.46** | **0.8295** |
+| **apex_t** (seconds) | 0.3343 | 0.1215 | 0.1011 | **0.0961** | **0.9428** |
+| **apex_x** (meters) | 10.8238 | 3.7286 | 2.9034 | **2.7481** | **0.9816** |
+| **apex_y** (meters) | 5.4257 | 2.0400 | 1.5139 | **1.4489** | **0.9850** |
+| **apex_z** (meters) | 3.9195 | 1.1765 | 1.0103 | **0.9292** | **0.9754** |
+| **landing_t** (seconds) | 0.6258 | 0.2004 | 0.1882 | **0.1723** | **0.9472** |
+| **landing_x** (meters) | 18.1355 | 4.9235 | 4.2769 | **3.9409** | **0.9787** |
+| **landing_y** (meters) | 9.3260 | 3.4745 | 2.9026 | **2.8417** | **0.9728** |
+| **landing_z** (meters) | 0.0761 | 0.0789 | 0.0818 | **0.0761** | **0.9976** |
+
+The combined model performs significantly better than any single model on its own.
 
 ---
 
-## 6. Interactive 3D Trajectory Display & Animation
+## 6. Interactive 3D Visualizer
 
-An interactive 3D trajectory animation (`visualizer/hybrid_flight_animation.html`) was constructed using Plotly:
-- **Playable Animation Controls**: Includes `▶ Play Flight` and `⏸ Pause` buttons with a timeline scrubber slider, allowing judges to watch the ball launch from the bay, penetrate the $60\text{m}$ urban net, reach apex, impact the ground, and bounce/roll out to rest.
-- **Visual Spatial Elements**: Renders the launch tee, 4 radar checkpoint gates, the $60\text{m}$ red net barrier, 3D flight trajectory, apex, impact point, and ground rollout.
-
----
-
-## 7. Submission Verification & Compliance
-
-The final test predictions (`submission.csv`) were validated using automated assertions:
-- Dimensions: Exactly $(559, 10)$ matching `sample_submission.csv`.
-- Track IDs: $100\%$ alignment with `test.csv`.
-- Nullity: $0$ NaNs, $0$ nulls, $0$ infinite values.
-- Physical plausibility: Positive spin rates ($1691 - 11698\text{ RPM}$), strict temporal ordering ($t_{\text{land}} > t_{\text{apex}} > 0$), and non-negative apex clearance ($z_{\text{apex}} > z_{\text{launch}}$) for $100\%$ of test shots.
+We created an interactive 3D visualizer in `visualizer/hybrid_flight_animation.html`:
+- **Choose Any Shot**: A dropdown lets you pick different test shots to examine.
+- **Two Flight Paths**:
+  - **Cyan Solid Line**: Shows the true, smooth flight path calculated from physics.
+  - **Orange Dashed Line**: Shows the path when forced to pass through all radar checkpoints, showing the impact of sensor measurement noise.
+  - **Red Dotted Lines**: Shows the difference between the radar checkpoints and the pure physics line.
+- **Animated Playback**: Play, pause, or slide through the animation to watch the ball fly through the net, reach its apex, land, and roll to a stop.
 
 ---
 
-## 8. Novelty & Distinctive Contributions
+## 7. Submission Verification
 
-1. **Atmospheric Localization**: Explicit derivation of Stellenbosch barometric pressure ($997.0\text{ hPa}$) and air density ($\rho = 1.1868\text{ kg/m}^3$).
-2. **Quintavalla Quadratic Induced Drag**: Implementing trailing vortex quadratic drag $C_d = C_{d0} + k \cdot C_L^2$ into golf ball trajectory modeling.
-3. **Launch Efficiency Club Prior**: Novel feature $\text{Regime} = \frac{v_{z0}}{v_0^2}$ that separates drivers from wedges without requiring explicit club labeling.
-4. **Instantaneous Neural Aerodynamic Integration**: Direct embedding of an MLP into the numerical differential equation of motion.
-5. **Physics Residual Learning Architecture**: Structural physics anchoring combined with gradient boosting and deep representation learning on residual aerodynamic discrepancies.
+The final submission file (`submission.csv`) was tested to make sure it follows all competition rules:
+- Correct shape: Exactly 559 rows and 10 columns matching `sample_submission.csv`.
+- Track IDs match `test.csv` exactly.
+- No missing values, no nulls, and no infinite values.
+- Sensible values: Spin is between 1,600 and 12,000 RPM, landing happens after apex, and apex is higher than the launch tee.
 
-*Eligible for submission: Word count is under 2,000 words (limit: 3,000) and uses 4 figures (limit: 25).*
+---
+
+## 8. Summary of Main Improvements
+
+1. **Local Weather and Air**: Adjusted air density for Stellenbosch altitude to improve flight distance predictions.
+2. **Club Type Ratio**: Used vertical speed and kinetic energy to estimate spin without needing club labels.
+3. **Turf Modeling**: Modeled realistic Kikuyu grass bounce and rollout so the ball stops naturally instead of bouncing high.
+4. **Dual Flight Path Visualizer**: Shows both the smooth physics path and the radar-fitted path so users can easily see radar measurement noise.
+5. **Physics Plus Machine Learning**: Grounded all predictions in real flight physics and used machine learning only to correct small errors.

@@ -1,21 +1,13 @@
 """
 physics-model.py
 
-Physics-based aerodynamic and ballistic trajectory model for the Inrange Golf Competition.
-Models 3D golf ball flight using:
-  - Local Stellenbosch atmospheric conditions (Altitude: 136m, P: 997.0 hPa, Temp: 19.5°C, rho: 1.1868 kg/m^3)
-  - Realistic dimpled golf ball aerodynamics:
-      * Dimple turbulators triggering early boundary layer transition to turbulence
-      * Supercritical drag regime with Reynolds-number / speed dependency
-      * USGA / Quintavalla quadratic induced drag C_d = C_d0(v) + k_ind * C_L^2
-      * Dimpled Magnus effect lift curve C_L(S)
-      * Aerodynamic spin decay over flight time (dimple skin friction torque)
-  - Club regime / launch efficiency inference for spin rate calibration
-  - Kinematic checkpoint differentiation for shot-specific parameter calibration
-  - Apex detection (v_z = 0) and terrain-elevation landing detection
-  - Ground impact restitution, micro-bounces, and rolling resistance
-
-Author: Inrange Competition Participant
+Physics-based flight and bounce simulation for the Inrange Golf Competition.
+It calculates:
+  - Air resistance and backspin lift holding the ball in the air.
+  - Air pressure and density in Stellenbosch, South Africa.
+  - How spin slowly drops during flight.
+  - Ball apex (highest point) and landing location.
+  - Realistic turf bounce and rollout on Stellenbosch Kikuyu grass.
 """
 
 import os
@@ -26,59 +18,41 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
-# ==============================================================================
-# 1. STELLENBOSCH ATMOSPHERIC CONDITIONS & AIR DENSITY
-# ==============================================================================
-# Elevation: ~136 meters above sea level
-# Mean ambient temperature: 19.5 °C (292.65 K)
-# Sea level reference pressure: 101,325 Pa, reference temperature: 288.15 K
-# Temperature lapse rate: 0.0065 K/m, specific gas constant: 287.058 J/(kg*K)
-# Barometric formula: P = P0 * (1 - L*h/T0)**(g*M / (R0*L))
+# 1. Weather and air in Stellenbosch
+# Elevation: about 136 meters above sea level
+# Average temperature: 19.5 C
+# Air is slightly thinner at this altitude, so the ball flies with less drag
 ELEVATION_STELLENBOSCH = 136.0           # meters
 TEMP_STELLENBOSCH_C = 19.5               # Celsius
 TEMP_STELLENBOSCH_K = 273.15 + TEMP_STELLENBOSCH_C # 292.65 K
 P_SEA_LEVEL = 101325.0                   # Pa
 R_SPECIFIC_AIR = 287.058                 # J/(kg*K)
-G_CONST = 9.80665                        # Standard gravity (m/s^2)
+G_CONST = 9.80665                        # Gravity (m/s^2)
 
-PRESSURE_STELLENBOSCH = P_SEA_LEVEL * (1.0 - 0.0065 * ELEVATION_STELLENBOSCH / 288.15) ** 5.25588 # ~99,701.9 Pa (997.02 hPa)
+PRESSURE_STELLENBOSCH = P_SEA_LEVEL * (1.0 - 0.0065 * ELEVATION_STELLENBOSCH / 288.15) ** 5.25588 # ~997 hPa
 RHO_STELLENBOSCH = PRESSURE_STELLENBOSCH / (R_SPECIFIC_AIR * TEMP_STELLENBOSCH_K) # ~1.1868 kg/m^3
 
-# ==============================================================================
-# 2. DIMPLED GOLF BALL GEOMETRIC & MASS PROPERTIES
-# ==============================================================================
-MASS = 0.04593                           # Regulation golf ball mass (kg)
-RADIUS = 0.02135                         # Regulation golf ball radius (m) (diameter = 42.7 mm)
-DIAMETER = 2.0 * RADIUS                  # m
-AREA = np.pi * RADIUS**2                 # Cross-sectional area ~ 0.001432 m^2
-AERO_FACTOR = 0.5 * RHO_STELLENBOSCH * AREA / MASS # ~ 0.01850 m^-1
-DYNAMIC_VISCOSITY_AIR = 1.81e-5          # Pa*s at 19.5 °C
-SPIN_DECAY_TAU = 15.0                    # seconds (aerodynamic torque spin decay)
-K_INDUCED_DRAG = 0.85                    # USGA / Quintavalla quadratic induced drag coefficient
+# 2. Golf ball size and properties
+MASS = 0.04593                           # Ball mass in kg (about 45.9 grams)
+RADIUS = 0.02135                         # Ball radius in meters
+DIAMETER = 2.0 * RADIUS                  # Ball diameter in meters
+AREA = np.pi * RADIUS**2                 # Ball cross-sectional area
+AERO_FACTOR = 0.5 * RHO_STELLENBOSCH * AREA / MASS # Air drag factor
+DYNAMIC_VISCOSITY_AIR = 1.81e-5          # Air viscosity
+SPIN_DECAY_TAU = 15.0                    # Spin decay rate in seconds
+K_INDUCED_DRAG = 0.85                    # Extra drag from backspin lift
 
 
 class InstantaneousAeroNeuralNet:
     """
-    Embedded Deep Neural Network operating directly inside the differential
-    equations of motion to predict instantaneous aerodynamic coefficients (C_d, C_L)
-    at every numerical integration step based on the ball's current speed, elevation,
-    orientation (pitch angle), and spin ratio.
-
-    Architecture:
-      Input (4: speed, elevation, pitch_angle, spin_param)
-        -> Dense(32, GELU)
-        -> Dense(32, GELU)
-        -> Dense(16, GELU)
-        -> Output(2: C_d, C_L)
-
-    Integrates Quintavalla (2002) quadratic induced drag formulation:
-      C_d = C_d0(v) + k_ind * C_L^2
+    Small helper neural network to calculate smooth air resistance and lift
+    at each step of flight based on ball speed, height, angle, and spin.
     """
     def __init__(self, radius=RADIUS, k_induced=K_INDUCED_DRAG, random_state=42):
         self.radius = radius
         self.k_induced = k_induced
         rng = np.random.RandomState(random_state)
-        # Deep representation weights
+        # Weights for the small neural net
         self.W1 = rng.randn(4, 32) * 0.05
         self.b1 = np.zeros(32)
         self.W2 = rng.randn(32, 32) * 0.05
@@ -93,7 +67,7 @@ class InstantaneousAeroNeuralNet:
         return 0.5 * x * (1.0 + np.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * (x**3))))
 
     def forward(self, speed, elevation, pitch_rad, spin_param, cd_scale=1.0, cl_scale=1.0):
-        # 1. Physics anchor: Magnus lift and Quintavalla quadratic induced drag
+        # 1. Base lift and drag formulas
         cl_base = spin_param / (0.85 + 1.25 * spin_param + 1e-6)
         cl_phys = cl_base * cl_scale
 
@@ -101,7 +75,7 @@ class InstantaneousAeroNeuralNet:
         cd_induced = self.k_induced * (cl_phys**2)
         cd_phys = (cd_base + cd_induced) * cd_scale
 
-        # 2. Instantaneous state vector: [speed, elevation, pitch, spin_param]
+        # 2. Input features: speed, height, pitch, and spin ratio
         x_norm = np.array([
             (speed - 45.0) / 25.0,
             (elevation - 15.0) / 20.0,
@@ -109,13 +83,13 @@ class InstantaneousAeroNeuralNet:
             (spin_param - 0.15) / 0.15
         ], dtype=float)
 
-        # 3. Forward inference through 3-layer deep neural representation
+        # 3. Neural net calculation
         h1 = self._gelu(x_norm @ self.W1 + self.b1)
         h2 = self._gelu(h1 @ self.W2 + self.b2)
         h3 = self._gelu(h2 @ self.W3 + self.b3)
         nn_out = h3 @ self.W4 + self.b4
 
-        # 4. Instantaneous aerodynamic corrections
+        # 4. Final drag and lift values
         cd_out = float(np.clip(cd_phys + float(np.tanh(nn_out[0]) * 0.012), 0.18, 0.52))
         cl_out = float(np.clip(cl_phys + float(np.tanh(nn_out[1]) * 0.012), -0.05, 0.46))
         return cd_out, cl_out
@@ -123,9 +97,7 @@ class InstantaneousAeroNeuralNet:
 
 class GolfBallPhysicsSimulator:
     """
-    Simulates 3D golf ball flight taking into account Stellenbosch atmospheric
-    pressure, Quintavalla quadratic induced drag, dimpled sphere aerodynamics,
-    and instantaneous embedded neural aerodynamic predictions.
+    Simulates the 3D flight of a golf ball using drag, lift, and gravity.
     """
 
     def __init__(self,
@@ -152,9 +124,7 @@ class GolfBallPhysicsSimulator:
 
     def dimple_drag_coefficient(self, speed, cl_val, cd_scale=1.0):
         """
-        Computes realistic dimpled ball drag coefficient using Quintavalla (2002)
-        quadratic induced drag formulation:
-          C_d(v, C_L) = C_d0(v) + k_ind * C_L^2
+        Calculates air resistance (drag) based on ball speed and backspin.
         """
         cd_base = 0.215 + 0.070 / (1.0 + (speed / 32.0)**2)
         cd_induced = self.k_induced * (cl_val**2)
@@ -163,8 +133,7 @@ class GolfBallPhysicsSimulator:
 
     def dimple_lift_coefficient(self, speed, spin_omega, cl_scale=1.0):
         """
-        Computes Magnus lift coefficient for a spinning dimpled ball:
-          C_L(S) = S / (0.85 + 1.25 * S), where S = r * omega / v.
+        Calculates upward lift from backspin (the Magnus effect).
         """
         spin_param = (self.radius * spin_omega) / (speed + 1e-6)
         cl_base = spin_param / (0.85 + 1.25 * spin_param + 1e-6)
@@ -173,9 +142,7 @@ class GolfBallPhysicsSimulator:
 
     def estimate_aero_coefficients(self, row):
         """
-        Estimates shot-specific aerodynamic calibration factors and initial spin
-        from launch velocity and the 4 checkpoint observations (15m, 30m, 45m, 60m).
-        Incorporates club-regime launch efficiency proxy (vz / v0^2).
+        Estimates air resistance and launch spin using speed and the 4 checkpoints.
         """
         t_pts = np.array([0.0, row['cp1_t'], row['cp2_t'], row['cp3_t'], row['cp4_t']], dtype=float)
         p_pts = np.array([
@@ -197,6 +164,7 @@ class GolfBallPhysicsSimulator:
 
             t_mid = float(row['cp2_t'])
             vx_mid = 2.0 * poly_x[0] * t_mid + poly_x[1]
+            vy_mid = 2.0 * poly_y[0] * t_mid + poly_y[1]
             vy_mid = 2.0 * poly_y[0] * t_mid + poly_y[1]
             vz_mid = 2.0 * poly_z[0] * t_mid + poly_z[1]
             v_mid = np.array([vx_mid, vy_mid, vz_mid], dtype=float)
@@ -340,13 +308,10 @@ class GolfBallPhysicsSimulator:
 
     def simulate_bounce_and_roll(self, p_land, v_land, z_ground, spin_rpm=None, max_bounces=2, dt=0.01):
         """
-        Simulates ground impact restitution, micro-bounces, and rolling rollout
-        calibrated for Stellenbosch Kikuyu turfgrass conditions:
-        - Dense Kikuyu thatch layer over clay-loam Western Cape soil
-        - Clegg Impact Value (CIV): ~75-80 Gravities (soft-medium turf, high plastic damping)
-        - Normal Coefficient of Restitution: e_z = 0.13 - 0.20 (absorbing >96% of vertical kinetic energy)
-        - Backspin shear bite: grass blade friction grips spinning cover, checking forward momentum
-        - Fairway rolling resistance: mu_roll = 0.28 - 0.32 on coarse Kikuyu stolon turf
+        Simulates ground bounce and rollout on Stellenbosch Kikuyu grass:
+        - Soft grass absorbs most downward energy, resulting in a low bounce.
+        - Backspin grabs the grass to slow the ball down.
+        - Natural grass friction brings the ball to a smooth stop.
         """
         p = np.array(p_land, dtype=float)
         v = np.array(v_land, dtype=float)
@@ -357,9 +322,9 @@ class GolfBallPhysicsSimulator:
         v_xy_mag = np.sqrt(v[0]**2 + v[1]**2) + 1e-8
         descent_angle_deg = np.degrees(np.arctan2(abs(v[2]), v_xy_mag))
 
-        # Dynamic restitution based on descent angle and plastic turf deformation:
-        # Steep iron/wedge descents (>45 deg) punch into spongy Kikuyu thatch with low COR
-        # Flatter driver skips (<30 deg) skip forward with slightly higher COR
+        # Bounce height depends on landing angle:
+        # Steep shots (wedges/irons) hit soft turf and bounce low.
+        # Flat shots (drivers) skip forward with slightly more bounce.
         if descent_angle_deg > 45.0:
             restitution_z = 0.13
         elif descent_angle_deg > 30.0:
@@ -367,12 +332,12 @@ class GolfBallPhysicsSimulator:
         else:
             restitution_z = 0.22
 
-        # Backspin bite factor: backspin grabs grass blades, imparting negative shear impulse
+        # Backspin slows down forward speed upon impact
         spin_val = float(spin_rpm) if spin_rpm is not None else 6000.0
         spin_bite = np.clip((spin_val / 8500.0) * 0.35, 0.10, 0.45)
         tangential_retention = np.clip(1.0 - (0.50 + spin_bite), 0.15, 0.45)
 
-        # First impact: normal rebound + tangential check
+        # First impact: vertical bounce and forward slowdown
         v[2] = abs(v[2]) * restitution_z
         v[0] *= tangential_retention
         v[1] *= tangential_retention
@@ -380,7 +345,7 @@ class GolfBallPhysicsSimulator:
         curr_t = 0.0
         bounce_count = 0
 
-        # Micro-hops (subtle 10-35cm grass hop, authentic to golf turf)
+        # Small hops (about 10 to 35 cm) on grass
         while bounce_count < max_bounces and v[2] > 0.4:
             while v[2] > 0 or p[2] > z_ground:
                 v[2] -= self.g * dt

@@ -1,18 +1,13 @@
 """
 hybrid.py
 
-Hybrid Trajectory Model for the Inrange Golf Competition.
+Main pipeline for the Inrange Golf Competition.
 Combines:
-  1. Aerodynamic Physics Model tailored for Stellenbosch, South Africa
-     - Elevation: 136m, Air pressure: 997.0 hPa, Mean temp: 19.5°C, Air density: 1.1868 kg/m^3
-     - Dimpled golf ball aerodynamics: supercritical boundary layer, speed-dependent Cd,
-       spin-induced drag, Magnus lift curve, and aerodynamic spin decay.
-  2. Gradient Boosted Decision Trees (LightGBM, XGBoost, CatBoost)
-  3. Deep Multi-Layer Neural Network (Representation Learning)
-  4. Residual Fine-Tuning & Multi-Model Stacking
-  5. Interactive 3D Trajectory & Bounce-and-Roll Animation (Plotly HTML + High-Res PNG)
-
-Author: Inrange Competition Participant
+  1. Flight physics model for Stellenbosch conditions.
+  2. Tree-based machine learning models (LightGBM, CatBoost).
+  3. Deep learning neural network.
+  4. Best weighting to combine all models.
+  5. Interactive 3D visualizer showing both the ideal flight and radar-fitted path.
 """
 
 import os
@@ -45,8 +40,7 @@ DeepTrajectoryNetwork = dl_module.DeepTrajectoryNetwork
 
 class HybridTrajectoryPipeline:
     """
-    State-of-the-art hybrid architecture uniting Stellenbosch dimpled physics
-    simulation, gradient boosting, and deep representation learning.
+    Main pipeline combining physics, machine learning, and deep learning.
     """
 
     def __init__(self, random_state=42):
@@ -204,8 +198,7 @@ class HybridTrajectoryPipeline:
             p_landing = [sim_flight['landing_x'], sim_flight['landing_y'], sim_flight['landing_z']]
             t_landing = sim_flight['landing_t']
 
-        # 1. Integrate physical aerodynamics ODE (drag deceleration, Magnus lift, spin decay, gravity acceleration)
-        # This represents the TRUE unconstrained physical trajectory ("How it should actually be")
+        # 1. Physical flight path: smooth natural flight without radar noise ("How it should actually be")
         v_launch = [float(sample_row['launch_vx']), float(sample_row['launch_vy']), float(sample_row['launch_vz'])]
         sim_flight = self.simulator.simulate_flight(p_launch, v_launch, cd_scale, cl_scale, cs_obs, est_spin, dt=0.01)
         phys_t = sim_flight['t']
@@ -217,8 +210,7 @@ class HybridTrajectoryPipeline:
             spin_rpm=est_spin
         )
 
-        # 2. Gate-Constrained Trajectory: Bends the curve to pass strictly through the measured radar gates & predictions
-        # (Illustrates the error-based path distorted by radar measurement noise)
+        # 2. Radar-fitted path: forced through measured checkpoints to show the effect of radar noise
         milestones = [
             (0.0, p_launch),
             (float(sample_row['cp1_t']), p_cp1),
@@ -264,7 +256,7 @@ class HybridTrajectoryPipeline:
             spin_rpm=est_spin
         )
 
-        # 3. Measurement Error Residual Vectors: Connect noisy radar gates to the ideal physical flight path
+        # 3. Measurement differences: lines connecting measured radar points to the pure physics path
         err_x, err_y, err_z = [], [], []
         milestones_info = [
             ('CP1', float(sample_row['cp1_t']), p_cp1),

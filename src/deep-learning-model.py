@@ -1,16 +1,9 @@
 """
 deep-learning-model.py
 
-Deep learning neural network pipeline for the Inrange Golf Competition.
-Performs:
-  - Physics-informed deep neural network with representation learning across all 9 trajectory targets.
-  - Symmetrical input and target standardization to ensure balanced gradient propagation.
-  - Multi-layer deep architecture (256 -> 256 -> 128 -> 64) with Adam optimization and adaptive learning rate.
-  - 5-Fold Cross-Validation with out-of-fold performance logging.
-  - Training loss trajectory visualization.
-  - Test set prediction export matching competition requirements.
-
-Author: Inrange Competition Participant
+Neural network model for the Inrange Golf Competition.
+It uses a multi-layer neural network to learn patterns in ball flight
+and predict apex, landing, and spin rate using 5-fold cross-validation.
 """
 
 import os
@@ -37,7 +30,7 @@ TARGET_COLUMNS = ml_module.TARGET_COLUMNS
 
 class DeepTrajectoryNetwork:
     """
-    Deep Multi-Layer Neural Network for multi-target trajectory regression.
+    Neural network model to predict flight trajectory targets.
     """
 
     def __init__(self, hidden_layer_sizes=(256, 256, 128, 64), n_splits=5, random_state=42):

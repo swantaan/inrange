@@ -1,99 +1,96 @@
-# Inrange Golf Ball Trajectory Prediction & 3D Flight Visualizer
+# Inrange Golf Ball Flight Predictor and 3D Visualizer
 
-An end-to-end Physics-Informed, Machine Learning, and Deep Learning solution for predicting full 3D golf ball flight trajectories, apex milestones, landing coordinates, and Stellenbosch turf rollout for the **Inrange Student Competition**.
+This project predicts the full flight of a golf ball from launch to landing, using physics, machine learning, and deep learning for the Inrange Student Competition.
 
 ---
 
 ## Overview
 
-Modern golf tracking systems (such as Inrange and TrackMan) capture the initial launch window of a golf ball before netting, urban barriers, or range boundaries obstruct full-flight radar tracking. The challenge is to extrapolate the complete 3D trajectory from trimmed early-flight checkpoints ($15\text{m}$, $30\text{m}$, $45\text{m}$, and $60\text{m}$ Urban Net), predicting:
-- **`launch_spin_rate`**: Backspin / total spin rate in RPM.
-- **`apex_x`, `apex_y`, `apex_z`, `apex_t`**: 3D coordinates and timestamp of the maximum flight elevation.
-- **`landing_x`, `landing_y`, `landing_z`, `landing_t`**: First ground contact coordinates and impact time.
+Driving ranges with safety nets only track golf balls for the first few meters (up to a 60-meter net). Our goal is to predict what happens after the ball passes the net:
+- **launch_spin_rate**: Ball spin at launch (RPM).
+- **apex_x, apex_y, apex_z, apex_t**: The highest point of the shot and when it happens.
+- **landing_x, landing_y, landing_z, landing_t**: Where and when the ball first hits the ground.
 
 ---
 
-## Architecture & Modeling Approach
+## How It Works
 
-The project implements a **Hybrid Physics-Guided Ensemble**:
+We combine three models to get the best accuracy:
 
-1. **Aerodynamic Physics Engine (`src/physics-model.py`)**:
-   - Numerical ODE integration of 3D ballistic equations.
-   - Dynamic Quintavalla dimpled drag model: $C_d(v) = C_{d0} + k C_l^2$.
-   - Magnus lift force with continuous exponential spin decay: $\omega(t) = \omega_0 e^{-t/\tau}$.
-   - Calibrated air density ($P = 997.0\text{ hPa}$, $T = 20^\circ\text{C}$).
-   - Stellenbosch Kikuyu turf plastic deformation model (Clegg Impact Value $\approx 75-80\text{ CIV}$), backspin shear bite, and rolling resistance.
+1. **Physics Model (`src/physics-model.py`)**:
+   - Calculates the flight using real aerodynamic formulas (air resistance, spin lift, and gravity).
+   - Accounts for local weather and elevation in Stellenbosch, South Africa.
+   - Simulates how the ball bounces and rolls on local Kikuyu grass turf.
 
-2. **Gradient Boosted Machine Learning (`src/machine-learning-model.py`)**:
-   - 5-Fold Cross-Validation with LightGBM and CatBoost.
-   - High-order kinetic features, curvature vectors, and ballistic energy invariants.
-   - Out-of-fold residual learning targeting physics prediction deltas.
+2. **Machine Learning Model (`src/machine-learning-model.py`)**:
+   - Uses LightGBM and CatBoost tree models.
+   - Learns the small differences between the physics predictions and the actual radar data.
+   - Uses 5-fold cross-validation to prevent overfitting.
 
-3. **Deep Learning ResNet (`src/deep-learning-model.py`)**:
-   - Deep PyTorch residual neural network with Swish activations and LayerNorm.
-   - Models non-linear aerodynamic boundary layer transitions and turbulence regimes.
+3. **Deep Learning Model (`src/deep-learning-model.py`)**:
+   - Uses a PyTorch neural network to capture complex patterns in ball speed, angle, and curvature.
 
-4. **Hybrid Ensemble & Trajectory Pipeline (`src/hybrid.py`)**:
-   - Blends physics base predictions with ML and DL residuals using target-specific optimal grid weights.
-   - Generates final submission files compliant with competition specifications.
+4. **Hybrid Pipeline (`src/hybrid.py`)**:
+   - Blends the physics base predictions with the machine learning and deep learning corrections.
+   - Produces the final competition submission file.
 
 ---
 
 ## 3D Interactive Visualizer
 
-The interactive 3D visualizer is located in `visualizer/hybrid_flight_animation.html`.
+You can open `visualizer/hybrid_flight_animation.html` in any web browser to see the shots in 3D.
 
-### Key Features:
-- **Multi-Shot Dropdown**: Select and inspect any predicted shot from the test dataset.
-- **Dual Flight Path Comparison**:
-  - **Ideal Aerodynamic Path (Cyan Solid)**: Pure fluid-dynamic ODE trajectory without radar noise.
-  - **Radar-Constrained Path (Orange Dashed)**: Path fitted strictly through noisy radar checkpoints.
-- **Measurement Error Vectors (Crimson Dotted)**: Visualizes the exact 3D measurement residuals ($\Delta$) at each radar checkpoint.
-- **Stellenbosch Kikuyu Turf Ballistics**: Authentic post-landing micro-hop ($0.25\text{m} - 0.40\text{m}$) and rollout with backspin check.
-- **Play/Pause & Time Scrubbing**: Interactive playback controls for complete flight simulation.
+### Features:
+- **Choose Any Shot**: A dropdown menu lets you switch between different test shots.
+- **Two Flight Paths**:
+  - **Ideal Flight Path (Cyan Line)**: Shows the smooth, natural path calculated by physics.
+  - **Radar-Fitted Path (Orange Line)**: Shows the path when forced to hit every measured checkpoint, including radar noise.
+- **Measurement Differences (Red Dotted Lines)**: Shows the difference between radar points and the pure physics flight.
+- **Realistic Bounce and Roll**: Shows how the ball lands and rolls to a stop on Stellenbosch grass.
+- **Playback Controls**: Play, pause, or drag the slider to watch the ball fly through the air.
 
 ---
 
-## Repository Structure
+## Folder Structure
 
 ```
 inrange/
 ├── data/
-│   ├── train.csv                # 492 recorded full-flight radar shots (Stellenbosch, SA)
-│   ├── test.csv                 # 500 trimmed radar test shots
-│   └── sample_submission.csv    # Submission schema template
+│   ├── train.csv                # Training shots with complete radar tracking
+│   ├── test.csv                 # Test shots cut off at the 60m net
+│   └── sample_submission.csv    # Example submission format
 ├── src/
-│   ├── physics-model.py         # 3D aerodynamic ODE simulator & turf ballistics
-│   ├── machine-learning-model.py# LightGBM / CatBoost residual regression
-│   ├── deep-learning-model.py   # PyTorch ResNet residual architecture
-│   └── hybrid.py                # Pipeline execution, ensembling & 3D visualizer
-├── results/                     # Out-of-fold and test predictions
+│   ├── physics-model.py         # Flight physics and turf bounce simulation
+│   ├── machine-learning-model.py# Tree-based residual models
+│   ├── deep-learning-model.py   # Neural network model
+│   └── hybrid.py                # Main script that combines models and makes the visualizer
+├── results/                     # Model predictions and outputs
 ├── visualizer/
-│   └── hybrid_flight_animation.html # Standalone interactive 3D visualizer
+│   └── hybrid_flight_animation.html # 3D flight visualizer
 ├── report/
-│   └── KAGGLE_WRITEUP.md        # Technical documentation and methodology writeup
-├── submission.csv               # Competition submission file
-├── make_submission.py           # Verification and submission generation script
+│   └── KAGGLE_WRITEUP.md        # Detailed competition report
+├── submission.csv               # Final submission file
+├── make_submission.py           # Script to check and create submission files
 └── README.md
 ```
 
 ---
 
-## Getting Started
+## Quick Start
 
-### Prerequisites
+### Install Dependencies
 ```bash
 pip install numpy scipy pandas scikit-learn lightgbm catboost torch plotly
 ```
 
-### Running the Pipeline
+### Run the Pipeline
 ```bash
-# Run the complete hybrid pipeline and generate predictions:
+# Run the model pipeline and build the visualizer:
 python src/hybrid.py
 
-# Verify and format submission:
+# Check that the submission file is valid:
 python make_submission.py
 ```
 
-### Viewing the Visualizer
-Open `visualizer/hybrid_flight_animation.html` in any web browser.
+### View the 3D Flight
+Double-click `visualizer/hybrid_flight_animation.html` or open it in any web browser.

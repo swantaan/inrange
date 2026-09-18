@@ -1,24 +1,14 @@
 """
 make_submission.py
 
-Master submission generator and verification script for the Inrange Golf Competition.
-Performs:
-  - Loads predictions from the winning Hybrid Model (or runs pipelines if not present).
-  - Strictly validates format and values against data/sample_submission.csv:
-      * Exactly 559 rows and 10 columns
-      * Exact column names and order:
-        ['track_id', 'launch_spin_rate', 'apex_t', 'apex_x', 'apex_y', 'apex_z',
-         'landing_t', 'landing_x', 'landing_y', 'landing_z']
-      * Exactly matching track_id ordering from data/test.csv
-      * Zero NaN / Null / Inf values
-      * Physical plausibility checks:
-          - spin_rate > 0 (1500 - 12000 RPM)
-          - apex_t > 0, landing_t > apex_t
-          - apex_z > launch_z, landing_z near terrain elevation
-  - Saves submission.csv to the project root and results/submission.csv.
-  - Prints a comprehensive model comparison scorecard (Physics vs ML vs DL vs Hybrid).
-
-Author: Inrange Competition Participant
+Script to check and create the final submission file.
+It checks that:
+  - The file has exactly 559 rows and 10 columns.
+  - The column names and order match sample_submission.csv.
+  - The track IDs match test.csv in the exact same order.
+  - There are no missing, null, or infinite numbers.
+  - Values make sense (spin is positive, landing happens after apex).
+  - Saves the final submission.csv file.
 """
 
 import os
