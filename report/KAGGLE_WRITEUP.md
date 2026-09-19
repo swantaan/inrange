@@ -91,11 +91,11 @@ The combined model performs significantly better than any single model on its ow
 
 ---
 
-## 6. Interactive 3D Visualizers
+## 6. Interactive 3D Visualizer
 
-I developed two interactive visualizer suites:
-1. **Interactive 3D Golf Flight Simulator (`visualizer/golf_simulator_3d.html` / `visualizer/index.html`)**:
-   - Realistic 3D flight physics built on Three.js and custom shaders.
-   - Exact 60m netted range cylindrical arc boundary, checkpoint gates (15m, 30m, 45m, 60m), and elevated bay platforms.
-   - Multi-hop Kikuyu turf bounce and rollout dynamics with impact shockwave ripples.
-   - Dynamic cinematic camera controls (Follow Cam, TV Cam, Net Cam, Green Cam).
+I developed an interactive 3D visualizer suite:
+- **Interactive 3D Golf Flight Simulator (`visualizer/golf_simulator_3d.html` / `visualizer/index.html`)**:
+  - Realistic 3D flight physics built on Three.js and custom shaders.
+  - Exact 60m netted range cylindrical arc boundary, checkpoint gates (15m, 30m, 45m, 60m), and elevated bay platforms.
+  - Multi-hop Kikuyu turf bounce and rollout dynamics with impact shockwave ripples.
+  - Dynamic cinematic camera controls (Follow Cam, TV Cam, Net Cam, Green Cam).
