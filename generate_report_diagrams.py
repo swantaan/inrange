@@ -429,6 +429,217 @@ def generate_parity_prediction_grid():
     print(f"[+] Saved: {out_path}")
 
 
+def generate_results_table_image():
+    """Renders the CV performance benchmark comparison as a publication table graphic."""
+    fig, ax = plt.subplots(figsize=(11, 6.2), dpi=300)
+    fig.patch.set_facecolor('#0b0f19')
+    ax.set_facecolor('#0b0f19')
+    ax.axis('off')
+
+    headers = ["Target Metric", "Physics Baseline", "Tree Models", "Neural Net", "Hybrid Fusion", "Final R²"]
+    rows = [
+        ["launch_spin_rate (RPM)", "1360.58", "763.74", "778.19", "730.46", "0.8295"],
+        ["apex_t (s)", "0.3343", "0.1215", "0.1011", "0.0961", "0.9428"],
+        ["apex_x (m)", "10.8238", "3.7286", "2.9034", "2.7481", "0.9816"],
+        ["apex_y (m)", "5.4257", "2.0400", "1.5139", "1.4489", "0.9850"],
+        ["apex_z (m)", "3.9195", "1.1765", "1.0103", "0.9292", "0.9754"],
+        ["landing_t (s)", "0.6258", "0.2004", "0.1882", "0.1723", "0.9472"],
+        ["landing_x (m)", "18.1355", "4.9235", "4.2769", "3.9409", "0.9787"],
+        ["landing_y (m)", "9.3260", "3.4745", "2.9026", "2.8417", "0.9728"],
+        ["landing_z (m)", "0.0761", "0.0789", "0.0818", "0.0761", "0.9976"],
+    ]
+
+    # Title header
+    ax.text(0.5, 0.94, "5-Fold Cross-Validation Performance Comparison", fontsize=15, fontweight='bold',
+            color='#ffffff', ha='center', va='center', transform=ax.transAxes)
+    ax.text(0.5, 0.88, "Mean Absolute Error (MAE) Across All Target Quantities (Lower is Better, except R²)",
+            fontsize=10.5, color='#94a3b8', ha='center', va='center', transform=ax.transAxes)
+
+    # Render Table
+    col_widths = [0.28, 0.14, 0.14, 0.14, 0.16, 0.14]
+    start_y = 0.78
+    row_height = 0.068
+
+    # Header row
+    x_offset = 0.0
+    for i, h in enumerate(headers):
+        w = col_widths[i]
+        rect = patches.Rectangle((x_offset, start_y), w, row_height,
+                                 facecolor='#1e293b', edgecolor='#334155', linewidth=1.2, transform=ax.transAxes)
+        ax.add_patch(rect)
+        ax.text(x_offset + w/2, start_y + row_height/2, h, color='#38bdf8' if i == 4 else '#f8fafc',
+                fontsize=10, fontweight='bold', ha='center', va='center', transform=ax.transAxes)
+        x_offset += w
+
+    # Data rows
+    curr_y = start_y - row_height
+    for row_idx, r in enumerate(rows):
+        bg_col = '#131d31' if row_idx % 2 == 0 else '#0f172a'
+        x_offset = 0.0
+        for col_idx, val in enumerate(r):
+            w = col_widths[col_idx]
+            rect = patches.Rectangle((x_offset, curr_y), w, row_height,
+                                     facecolor=bg_col, edgecolor='#1e293b', linewidth=0.8, transform=ax.transAxes)
+            ax.add_patch(rect)
+
+            # Highlight best hybrid score
+            if col_idx == 4:
+                text_col = '#4ade80'
+                weight = 'bold'
+            elif col_idx == 5:
+                text_col = '#38bdf8'
+                weight = 'bold'
+            elif col_idx == 0:
+                text_col = '#f1f5f9'
+                weight = 'bold'
+            else:
+                text_col = '#cbd5e1'
+                weight = 'normal'
+
+            ax.text(x_offset + 0.015 if col_idx == 0 else x_offset + w/2,
+                    curr_y + row_height/2, val,
+                    color=text_col, fontsize=9.5, fontweight=weight,
+                    ha='left' if col_idx == 0 else 'center', va='center', transform=ax.transAxes)
+            x_offset += w
+        curr_y -= row_height
+
+    out_path = os.path.join(figures_dir, "09_results_table_image.png")
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"[+] Saved: {out_path}")
+
+
+def generate_radar_checkpoint_tracking():
+    """Generates a visualization of radar track checkpoints vs extrapolated trajectory."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5), dpi=300)
+    fig.patch.set_facecolor('#ffffff')
+
+    # Flight profile (x vs z)
+    t = np.linspace(0, 5.2, 200)
+    v0, theta = 68.0, np.radians(16.5)
+    g = 9.81
+    # Physics path with lift
+    x = v0 * np.cos(theta) * t
+    z = 1.2 + v0 * np.sin(theta) * t - 0.5 * (g - 2.8) * t**2
+    mask = z >= 0
+    x, z, t = x[mask], z[mask], t[mask]
+
+    # Checkpoint gate distances
+    gates = [15.0, 30.0, 45.0, 60.0]
+    gate_indices = [np.argmin(np.abs(x - g_dist)) for g_dist in gates]
+
+    # Left plot: Side elevation
+    ax1.plot(x, z, color='#0284c7', lw=3, label='Extrapolated Full Flight Trajectory')
+    ax1.plot(x[x <= 60], z[x <= 60], color='#10b981', lw=4, label='In-Range Tracked Segment (0–60m)')
+
+    # Checkpoint points with radar error ellipses
+    for idx, g_dist in zip(gate_indices, gates):
+        gx, gz = x[idx], z[idx]
+        ax1.scatter(gx, gz, color='#e11d48', s=80, zorder=5)
+        circle = patches.Ellipse((gx, gz), width=2.5, height=0.9, angle=15,
+                                 facecolor='#fda4af', edgecolor='#e11d48', alpha=0.5, linestyle='--')
+        ax1.add_patch(circle)
+        ax1.text(gx, gz + 1.6, f"Gate {g_dist:.0f}m\n(t={t[idx]:.2f}s)", fontsize=8, ha='center', fontweight='bold', color='#881337')
+
+    # Net cutoff line
+    ax1.axvline(60.0, color='#f59e0b', linestyle=':', lw=2.5, label='60m Net Cutoff Boundary')
+    ax1.axhline(0.0, color='#15803d', lw=2)
+
+    # Mark Apex and Landing
+    apex_idx = np.argmax(z)
+    ax1.scatter(x[apex_idx], z[apex_idx], color='#8b5cf6', s=120, marker='^', zorder=6, label=f'Apex ({x[apex_idx]:.1f}m, {z[apex_idx]:.1f}m)')
+    ax1.scatter(x[-1], z[-1], color='#b91c1c', s=120, marker='x', lw=3, zorder=6, label=f'Landing ({x[-1]:.1f}m, 0.0m)')
+
+    ax1.set_title("Longitudinal Elevation & Radar Checkpoint Gates", fontsize=12, fontweight='bold', pad=10)
+    ax1.set_xlabel("Downrange Distance X (meters)", fontsize=10)
+    ax1.set_ylabel("Altitude Z (meters)", fontsize=10)
+    ax1.grid(True, linestyle='--', alpha=0.6)
+    ax1.legend(loc='upper right', fontsize=8.5)
+
+    # Right plot: Radar Velocity Decay & Spin Deceleration along gates
+    v_mag = v0 * np.exp(-0.045 * t)
+    spin = 2900 * np.exp(-0.028 * t)
+
+    ax2_spin = ax2.twinx()
+    l1 = ax2.plot(x, v_mag, color='#0284c7', lw=2.5, label='Velocity Magnitude (m/s)')
+    l2 = ax2_spin.plot(x, spin, color='#f59e0b', lw=2.5, linestyle='--', label='Backspin Rate (RPM)')
+
+    for g_dist in gates:
+        ax2.axvline(g_dist, color='#94a3b8', linestyle=':', lw=1.2)
+
+    ax2.axvline(60.0, color='#f59e0b', linestyle=':', lw=2.5)
+
+    lines = l1 + l2
+    labels = [l.get_label() for l in lines]
+    ax2.legend(lines, labels, loc='upper right', fontsize=8.5)
+
+    ax2.set_title("Kinematic Decay Across Radar Gate Horizon", fontsize=12, fontweight='bold', pad=10)
+    ax2.set_xlabel("Downrange Distance X (meters)", fontsize=10)
+    ax2.set_ylabel("Speed (m/s)", fontsize=10, color='#0284c7')
+    ax2_spin.set_ylabel("Backspin (RPM)", fontsize=10, color='#d97706')
+    ax2.grid(True, linestyle='--', alpha=0.6)
+
+    plt.tight_layout()
+    out_path = os.path.join(figures_dir, "10_radar_checkpoint_tracking.png")
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"[+] Saved: {out_path}")
+
+
+def generate_landing_dispersion_heatmap():
+    """Generates 2D landing dispersion and spray pattern visualization."""
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
+    fig.patch.set_facecolor('#ffffff')
+
+    np.random.seed(42)
+    # Simulate realistic club distributions (Wedges, Mid Irons, Long Irons, Drivers)
+    clubs = {
+        'Wedge (PW/SW)': {'n': 80, 'x_mu': 110, 'x_sd': 6, 'y_mu': 0, 'y_sd': 4, 'col': '#10b981'},
+        'Mid Iron (7I)': {'n': 100, 'x_mu': 155, 'x_sd': 8, 'y_mu': 1, 'y_sd': 6, 'col': '#0284c7'},
+        'Long Iron (4I)': {'n': 90, 'x_mu': 195, 'x_sd': 11, 'y_mu': 3, 'y_sd': 9, 'col': '#8b5cf6'},
+        'Driver (1W)': {'n': 120, 'x_mu': 245, 'x_sd': 15, 'y_mu': 5, 'y_sd': 14, 'col': '#f43f5e'},
+    }
+
+    # Draw Driving Range Contours / Fairway target circles
+    for r in [100, 150, 200, 250]:
+        circle = patches.Circle((r, 0), radius=12, facecolor='#f0fdf4', edgecolor='#86efac', lw=1.5, zorder=1)
+        ax.add_patch(circle)
+        ax.text(r, 0, f"{r}m", color='#15803d', fontsize=9, fontweight='bold', ha='center', va='center')
+
+    # Draw Net boundary arc at 60m
+    theta_net = np.linspace(-np.pi/4, np.pi/4, 100)
+    ax.plot(60 * np.cos(theta_net), 60 * np.sin(theta_net), color='#f59e0b', lw=3, linestyle='--', label='60m Net Cutoff Radius')
+
+    # Plot dispersion clusters
+    for club, cfg in clubs.items():
+        x_pts = np.random.normal(cfg['x_mu'], cfg['x_sd'], cfg['n'])
+        y_pts = np.random.normal(cfg['y_mu'], cfg['y_sd'], cfg['n'])
+        ax.scatter(x_pts, y_pts, color=cfg['col'], alpha=0.7, s=25, label=club, zorder=3)
+
+        # 90% confidence dispersion ellipse
+        cov = np.cov(x_pts, y_pts)
+        lambda_, v = np.linalg.eig(cov)
+        lambda_ = np.sqrt(lambda_)
+        angle = np.degrees(np.arctan2(v[1, 0], v[0, 0]))
+        ell = patches.Ellipse((cfg['x_mu'], cfg['y_mu']), width=lambda_[0]*4.5, height=lambda_[1]*4.5,
+                              angle=angle, facecolor='none', edgecolor=cfg['col'], lw=2, linestyle='-', zorder=2)
+        ax.add_patch(ell)
+
+    ax.set_title("Shot Landing Dispersion & Spray Ellipses Across Club Regimes", fontsize=13, fontweight='bold', pad=12)
+    ax.set_xlabel("Downrange Carry Distance X (meters)", fontsize=10)
+    ax.set_ylabel("Lateral Spray Y (meters)", fontsize=10)
+    ax.set_xlim(30, 285)
+    ax.set_ylim(-40, 40)
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.legend(loc='upper left', framealpha=0.95, fontsize=9)
+
+    plt.tight_layout()
+    out_path = os.path.join(figures_dir, "11_landing_dispersion_heatmap.png")
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"[+] Saved: {out_path}")
+
+
 def main():
     print("=" * 65)
     print("GENERATING COMPREHENSIVE SUITE OF REPORT DIAGRAMS & FIGURES")
@@ -441,8 +652,11 @@ def main():
     generate_club_regime_scatter()
     generate_turf_bounce_diagram()
     generate_parity_prediction_grid()
+    generate_results_table_image()
+    generate_radar_checkpoint_tracking()
+    generate_landing_dispersion_heatmap()
     print("=" * 65)
-    print(f"All 8 diagrams successfully written to: {figures_dir}")
+    print(f"All 11 diagrams successfully written to: {figures_dir}")
     print("=" * 65)
 
 
