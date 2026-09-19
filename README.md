@@ -36,18 +36,25 @@ We combine three models to get the best accuracy:
 
 ---
 
-## 3D Interactive Visualizer
+## 3D Interactive Golf Flight Simulator
 
-You can open `visualizer/hybrid_flight_animation.html` in any web browser to see the shots in 3D.
+You can open `visualizer/golf_simulator_3d.html` (or `visualizer/index.html`) in any web browser for a full 3D flight experience built with Three.js, GSAP, and custom WebGL shaders.
 
-### Features:
-- **Choose Any Shot**: A dropdown menu lets you switch between different test shots.
-- **Two Flight Paths**:
-  - **Ideal Flight Path (Cyan Line)**: Shows the smooth, natural path calculated by physics.
-  - **Radar-Fitted Path (Orange Line)**: Shows the path when forced to hit every measured checkpoint, including radar noise.
-- **Measurement Differences (Red Dotted Lines)**: Shows the difference between radar points and the pure physics flight.
-- **Realistic Bounce and Roll**: Shows how the ball lands and rolls to a stop on Stellenbosch grass.
-- **Playback Controls**: Play, pause, or drag the slider to watch the ball fly through the air.
+### Features & Requirements:
+- **Accurate 60m Cylindrical Safety Net Arc**:
+  - Net is modelled along the exact $60.0\text{m}$ Euclidean radius arc from the tee bay with translucent netting, neon boundary line, and checkpoint pillars.
+- **Multi-Tier Range Topography**:
+  - Ground level hitting bays ($z \approx 0.06\text{m}$) and elevated upper deck hitting bays ($z \approx 4.125\text{m}$).
+- **Pre-Net vs. Post-Net Trajectory Differentiation**:
+  - **Radar Tracking Zone (0 - 60m)**: Highlighted in glowing cyan with checkpoint rings ($15\text{m}, 30\text{m}, 45\text{m}, 60\text{m}$).
+  - **Predicted Aerodynamic Flight (60m+)**: Smooth aerodynamic parabolic path up to apex and landing.
+- **Kikuyu Grass Bounce & Rollout Physics**:
+  - Parabolic multi-hop bounces with turf impact shockwaves and expanding green ripple rings on contact.
+- **Minimalist Telemetry HUD & Audio**:
+  - Web Audio API synthesizer for the driver crack, net pass ping, bounce thumps, and chime.
+  - Rotating 3D wind dial, 2D top-down minimap radar, and celebratory particle effects.
+- **Dynamic Camera Modes**:
+  - **Follow Cam** (behind ball), **TV Cam** (spectator tower), **Tee Cam**, **60m Net Cam** (on top of the safety net), and **Green Cam**.
 
 ---
 
@@ -60,17 +67,30 @@ inrange/
 │   ├── test.csv                 # Test shots cut off at the 60m net
 │   └── sample_submission.csv    # Example submission format
 ├── src/
-│   ├── physics-model.py         # Flight physics and turf bounce simulation
-│   ├── machine-learning-model.py# Tree-based residual models
-│   ├── deep-learning-model.py   # Neural network model
-│   └── hybrid.py                # Main script that combines models and makes the visualizer
-├── results/                     # Model predictions and outputs
+│   ├── physics.py               # Core Stellenbosch dimpled flight & turf physics engine
+│   ├── features.py              # Physics-informed aerodynamic & kinematic feature extraction
+│   ├── models.py                # Tree ensemble (LightGBM/CatBoost/XGBoost) & Deep Neural Net
+│   ├── hybrid.py                # Hybrid orchestrator combining physics baseline & learned residuals
+│   ├── trajectory_visualizer.py # Interactive Plotly dual-path comparison 3D visualizer
+│   ├── build_3d_simulator.py    # 3D interactive simulator generator
+│   ├── generate_funky_textures.py # Funky cyberpunk radar ball & turf texture generator
+│   ├── physics-model.py         # Physics CLI entrypoint
+│   ├── machine-learning-model.py# Tree model CLI entrypoint
+│   └── deep-learning-model.py   # Deep learning CLI entrypoint
+├── results/
+│   ├── submission.csv           # Final competition submission file
+│   ├── hybrid_predictions.csv   # Winning hybrid ensemble predictions
+│   └── hybrid_oof.csv           # 5-fold cross-validation out-of-fold predictions
 ├── visualizer/
-│   └── hybrid_flight_animation.html # 3D flight visualizer
+│   ├── golf_simulator_3d.html   # Standalone 3D golf flight simulator
+│   ├── index.html               # Visualizer entrypoint
+│   ├── textures/                # High-res procedural PNG textures
+│   └── legacy/                  # Archived legacy visualizers
 ├── report/
+│   ├── figures/                 # High-resolution report graphics & architecture schematics
 │   └── KAGGLE_WRITEUP.md        # Detailed competition report
-├── submission.csv               # Final submission file
-├── make_submission.py           # Script to check and create submission files
+├── generate_report_diagrams.py  # Generates publication-ready report figures & charts
+├── make_submission.py           # Script to validate and generate results/submission.csv
 └── README.md
 ```
 

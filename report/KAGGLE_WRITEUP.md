@@ -1,31 +1,27 @@
-# Inrange Golf Ball Trajectory Prediction and Analysis Report
+# Inrange Golf Ball Trajectory Prediction
 
-**Competition**: Inrange Student Competition (Stellenbosch University)  
-**Author**: Inrange Competition Participant  
+**Competition**: Inrange Competition 
+**Author**: Christiaan Swanepoel  
 **Approach**: Combining Physics, Tree Models, and Deep Learning  
 
 ---
 
-## 1. Summary and Problem Description
-
-On urban driving ranges, safety nets stop golf balls after about 60 meters. An open driving range tracks the whole shot from start to finish, but an urban netted range only sees the first part:
+# Input
 1. Launch information at the tee: ball speed, angles, and starting position.
 2. Checkpoints at 15 meters, 30 meters, 45 meters, and the 60-meter net.
 
-Our goal is to predict what happens after the ball passes the net for 559 test shots:
-- **Launch Spin Rate**: Ball backspin in RPM.
+The goal is to predict what happens after the ball passes the net for 559 test shots:
+- **Launch Spin Rate**: Ball spin in RPM.
 - **Apex**: The highest point of the flight (X, Y, Z coordinates and time).
 - **Landing**: Where and when the ball touches the ground.
 - **Visualizer**: A 3D animation showing the full flight, landing, and rollout.
 
-We built a simple and effective pipeline:
-1. A **physics model** calculates the flight using real aerodynamic formulas (gravity, air drag, and spin lift).
-2. **Machine learning models** (LightGBM, CatBoost) and a **neural network** predict the remaining differences between the physics calculation and real radar observations.
+I built a simple and effective pipeline:
+1. A physics model calculates the flight using real aerodynamic formulas (gravity, air drag, and spin lift).
+2. Machine learning models (LightGBM, CatBoost) and a neural network predict the remaining differences between the physics calculation and real radar observations.
 3. Combining them gives us accurate predictions that follow the laws of physics.
 
 ---
-
-## 2. Key Data Insights
 
 ### A. Bay Heights and Ground Levels
 Looking at the data from the 491 training shots, we found that shots come from four different hitting bays:
@@ -34,7 +30,6 @@ Looking at the data from the 491 training shots, we found that shots come from f
 - **Bay 3**: Ground level (height around 0.06 meters).
 - **Bay 4**: Ground level (height around 0.05 meters).
 
-**Important finding**: Shots that start on the ground land on the ground (around 0.07 meters). Shots that start from the upper deck land on an elevated area of the range (around 4.12 meters). Using this rule keeps our landing height predictions accurate.
 
 ### B. Grouping by Club Type
 Different golf clubs create different types of shots:
@@ -42,7 +37,7 @@ Different golf clubs create different types of shots:
 - **Mid-Irons**: Medium ball speed (45 to 60 m/s), medium launch angle (15 to 22 degrees), medium spin (5,000 to 7,000 RPM).
 - **Wedges**: Lower ball speed (30 to 40 m/s), high launch angle (25 to 32 degrees), high backspin (8,000 to 12,000 RPM).
 
-We created a simple ratio:
+I created a simple ratio:
 $$\text{Club Ratio} = \frac{\text{vertical speed}}{(\text{total speed})^2}$$
 This ratio easily separates drivers from wedges and improved our spin prediction error from 784 RPM down to 730 RPM.
 
@@ -71,32 +66,6 @@ The driving range in Stellenbosch uses Kikuyu grass. Kikuyu grass has thick, spo
 
 ## 4. How the Models Work Together
 
-We do not rely on machine learning alone. Instead, we use physics as the baseline:
-
-```
-Launch Data + Checkpoints
-         |
-         +-------------------------------------+
-         |                                     |
-         v                                     v
-  [Physics Engine]                    [Feature Engineering]
-  - Air drag and lift                  - Speeds, angles, ratios
-  - Gravity and air density                    |
-         |                                     v
-         |                              [Tree Models]
-         | (Physics Baseline)           LightGBM + CatBoost
-         |                                     |
-         |                                     v
-         |                              [Neural Network]
-         |                               PyTorch Model
-         |                                     |
-         +------------------+------------------+
-                            |
-                            v
-                    [Final Prediction]
-           Final = Physics + ML Corrections
-```
-
 1. **Step 1 (Physics Baseline)**: The physics model calculates an initial guess for apex, landing, and spin.
 2. **Step 2 (Finding the Errors)**: We calculate the difference between the true measurements and the physics guess.
 3. **Step 3 (Machine Learning)**: The tree models and neural network learn to predict these small differences.
@@ -122,32 +91,11 @@ The combined model performs significantly better than any single model on its ow
 
 ---
 
-## 6. Interactive 3D Visualizer
+## 6. Interactive 3D Visualizers
 
-We created an interactive 3D visualizer in `visualizer/hybrid_flight_animation.html`:
-- **Choose Any Shot**: A dropdown lets you pick different test shots to examine.
-- **Two Flight Paths**:
-  - **Cyan Solid Line**: Shows the true, smooth flight path calculated from physics.
-  - **Orange Dashed Line**: Shows the path when forced to pass through all radar checkpoints, showing the impact of sensor measurement noise.
-  - **Red Dotted Lines**: Shows the difference between the radar checkpoints and the pure physics line.
-- **Animated Playback**: Play, pause, or slide through the animation to watch the ball fly through the net, reach its apex, land, and roll to a stop.
-
----
-
-## 7. Submission Verification
-
-The final submission file (`submission.csv`) was tested to make sure it follows all competition rules:
-- Correct shape: Exactly 559 rows and 10 columns matching `sample_submission.csv`.
-- Track IDs match `test.csv` exactly.
-- No missing values, no nulls, and no infinite values.
-- Sensible values: Spin is between 1,600 and 12,000 RPM, landing happens after apex, and apex is higher than the launch tee.
-
----
-
-## 8. Summary of Main Improvements
-
-1. **Local Weather and Air**: Adjusted air density for Stellenbosch altitude to improve flight distance predictions.
-2. **Club Type Ratio**: Used vertical speed and kinetic energy to estimate spin without needing club labels.
-3. **Turf Modeling**: Modeled realistic Kikuyu grass bounce and rollout so the ball stops naturally instead of bouncing high.
-4. **Dual Flight Path Visualizer**: Shows both the smooth physics path and the radar-fitted path so users can easily see radar measurement noise.
-5. **Physics Plus Machine Learning**: Grounded all predictions in real flight physics and used machine learning only to correct small errors.
+I developed two interactive visualizer suites:
+1. **Interactive 3D Golf Flight Simulator (`visualizer/golf_simulator_3d.html` / `visualizer/index.html`)**:
+   - Realistic 3D flight physics built on Three.js and custom shaders.
+   - Exact 60m netted range cylindrical arc boundary, checkpoint gates (15m, 30m, 45m, 60m), and elevated bay platforms.
+   - Multi-hop Kikuyu turf bounce and rollout dynamics with impact shockwave ripples.
+   - Dynamic cinematic camera controls (Follow Cam, TV Cam, Net Cam, Green Cam).

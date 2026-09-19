@@ -1,0 +1,141 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{\textbf{Inrange Golf Ball Trajectory Prediction}}
+\author{\textbf{Christiaan Swanepoel} \\ Inrange Competition}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\hrule
+\vspace{1em}
+
+\section{Introduction and Problem Description}
+
+On urban driving ranges, safety netting truncates ball flight after approximately 60 meters. An open driving range tracks the whole shot from start to finish, but an urban netted range only measures:
+\begin{enumerate}
+    \item Launch telemetry at the tee: initial 3D position and velocity vectors $(x, y, z, v_x, v_y, v_z)$.
+    \item Checkpoints at 15\,m, 30\,m, 45\,m, and the 60\,m net.
+\end{enumerate}
+
+The goal is to predict what happens after the ball passes the net for 559 test shots:
+\begin{itemize}
+    \item \textbf{Launch Spin Rate}: Ball backspin in RPM.
+    \item \textbf{Apex}: Highest point of the flight (coordinates $x, y, z$ and time $t$).
+    \item \textbf{Landing}: Ground impact coordinates $(x, y, z)$ and flight duration $t$.
+    \item \textbf{Visualizer}: Realistic 3D full-flight animation including bounce and rollout.
+\end{itemize}
+
+I built a simple and effective pipeline:
+\begin{enumerate}
+    \item A physics model calculates flight using real aerodynamic formulas (gravity, air drag, and spin lift).
+    \item Machine learning models (LightGBM, CatBoost) and a neural network predict the remaining differences between the physics calculation and real radar observations.
+    \item Combining them gives accurate predictions that follow the laws of physics.
+\end{enumerate}
+
+\section{Key Data Insights}
+
+\subsection{Bay Heights and Ground Levels}
+From the 491 training shots, data originates from four hitting bays:
+\begin{itemize}
+    \item \textbf{Bay 1}: Ground level ($\approx 0.07$\,m).
+    \item \textbf{Bay 2}: Upper deck ($\approx 4.125$\,m).
+    \item \textbf{Bay 3}: Ground level ($\approx 0.06$\,m).
+    \item \textbf{Bay 4}: Ground level ($\approx 0.05$\,m).
+\end{itemize}
+
+\subsection{Grouping by Club Type}
+Different golf clubs produce distinct kinematic regimes:
+\begin{itemize}
+    \item \textbf{Drivers}: High speed (65--78\,m/s), low launch angle (10--15$^\circ$), low spin (2,000--3,000\,RPM).
+    \item \textbf{Mid-Irons}: Medium speed (45--60\,m/s), medium launch angle (15--22$^\circ$), medium spin (5,000--7,000\,RPM).
+    \item \textbf{Wedges}: Lower speed (30--40\,m/s), high launch angle (25--32$^\circ$), high backspin (8,000--12,000\,RPM).
+\end{itemize}
+
+I created a simple ratio:
+\begin{equation}
+\text{Club Ratio} = \frac{\text{vertical speed}}{(\text{total speed})^2} = \frac{v_z}{v_0^2}
+\end{equation}
+This ratio easily separates drivers from wedges and improved spin prediction error from 784\,RPM down to 730\,RPM.
+
+\subsection{Slowing Down at the Net}
+Data demonstrates that balls lose $\approx 31\%$ of their kinetic velocity upon reaching the 60-meter net. Measuring this deceleration rate helps quantify the effective air drag for each shot.
+
+\section{The Physics Model}
+
+\subsection{Local Air in Stellenbosch}
+Shots were recorded near Stellenbosch, South Africa ($\approx 136$\,m elevation, $T \approx 20^\circ\text{C}$). At this altitude, barometric pressure is $P \approx 997$\,hPa and air density $\rho \approx 1.187\,\text{kg/m}^3$ ($\approx 3\%$ thinner than sea level), reducing drag and increasing carry distance.
+
+\subsection{Drag, Lift, and Spin}
+\begin{itemize}
+    \item \textbf{Air Resistance (Drag)}: Dimples reduce drag coefficient ($C_d = C_{d0} + k \cdot C_L^2$).
+    \item \textbf{Lift (Magnus Effect)}: Backspin creates an upward lift force holding the ball in the air.
+    \item \textbf{Spin Decay}: Spin decays exponentially ($\tau \approx 15$\,s) during flight.
+\end{itemize}
+
+\subsection{Turf Bounce and Rollout in Stellenbosch}
+Stellenbosch uses Kikuyu grass with thick, spongy blades:
+\begin{itemize}
+    \item Soft turf absorbs vertical momentum, resulting in modest bounces of 20--40\,cm.
+    \item Backspin bites into turf, rapidly converting translational energy into deceleration.
+    \item Rolling resistance brings wedges to a stop within 1--3\,m, while drivers roll 12--18\,m.
+\end{itemize}
+
+\section{Model Architecture and Hybrid Stacking}
+
+\begin{enumerate}
+    \item \textbf{Step 1 (Physics Baseline)}: The physics model calculates an initial trajectory for apex, landing, and spin.
+    \item \textbf{Step 2 (Finding the Errors)}: We compute residuals: $\Delta = y_{\text{true}} - y_{\text{physics}}$.
+    \item \textbf{Step 3 (Machine Learning)}: Tree ensembles and neural networks learn to predict $\Delta$.
+    \item \textbf{Step 4 (Final Blend)}: Predictions are reconstructed as $\hat{y} = y_{\text{physics}} + w_{\text{ml}}\Delta_{\text{ml}} + w_{\text{dl}}\Delta_{\text{dl}}$.
+\end{enumerate}
+
+\section{Test Results (5-Fold Cross-Validation)}
+
+\begin{table}[htbp]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Target Metric} & \textbf{Physics} & \textbf{Trees} & \textbf{NN} & \textbf{Hybrid (MAE)} & \textbf{Final $R^2$} \\
+\midrule
+\textbf{launch\_spin\_rate} (RPM) & 1360.58 & 763.74 & 778.19 & \textbf{730.46} & \textbf{0.8295} \\
+\textbf{apex\_t} (s)              & 0.3343  & 0.1215 & 0.1011 & \textbf{0.0961} & \textbf{0.9428} \\
+\textbf{apex\_x} (m)              & 10.8238 & 3.7286 & 2.9034 & \textbf{2.7481} & \textbf{0.9816} \\
+\textbf{apex\_y} (m)              & 5.4257  & 2.0400 & 1.5139 & \textbf{1.4489} & \textbf{0.9850} \\
+\textbf{apex\_z} (m)              & 3.9195  & 1.1765 & 1.0103 & \textbf{0.9292} & \textbf{0.9754} \\
+\textbf{landing\_t} (s)           & 0.6258  & 0.2004 & 0.1882 & \textbf{0.1723} & \textbf{0.9472} \\
+\textbf{landing\_x} (m)           & 18.1355 & 4.9235 & 4.2769 & \textbf{3.9409} & \textbf{0.9787} \\
+\textbf{landing\_y} (m)           & 9.3260  & 3.4745 & 2.9026 & \textbf{2.8417} & \textbf{0.9728} \\
+\textbf{landing\_z} (m)           & 0.0761  & 0.0789 & 0.0818 & \textbf{0.0761} & \textbf{0.9976} \\
+\bottomrule
+\end{tabular}
+\caption{5-Fold Cross-Validation Performance Comparison across all target variables (MAE unless specified).}
+\end{table}
+
+\section{Interactive 3D Visualizers}
+
+I developed two interactive visualizer suites:
+\begin{enumerate}
+    \item \textbf{Interactive 3D Golf Flight Simulator} (\url{visualizer/index.html}):
+    \begin{itemize}
+        \item Realistic 3D flight physics built on Three.js and custom shaders.
+        \item Exact 60\,m netted range cylindrical arc boundary, checkpoint gates (15\,m, 30\,m, 45\,m, 60\,m), and elevated bay platforms.
+        \item Multi-hop Kikuyu turf bounce and rollout dynamics with impact shockwave ripples.
+        \item Dynamic cinematic camera controls (Follow Cam, TV Cam, Net Cam, Green Cam).
+    \end{itemize}
+    \item \textbf{Dual-Trajectory Radar Analysis Visualizer} (\url{visualizer/legacy/hybrid_flight_animation.html}):
+    \begin{itemize}
+        \item Compares the pure aerodynamic physics path against the checkpoint-fitted path to visualize sensor noise.
+        \item Playback scrubbing and 3D camera rotation for any test shot.
+    \end{itemize}
+\end{enumerate}
+
+\end{document}

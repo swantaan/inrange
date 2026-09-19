@@ -190,15 +190,11 @@ def make_submission():
     # Validate submission file
     validate_submission_file(sub_df, test_df, sample_sub)
 
-    # Write final submission.csv in root and in results
-    root_sub_path = 'submission.csv'
+    # Write final submission.csv only in results directory
     results_sub_path = os.path.join(results_dir, 'submission.csv')
-
-    sub_df.to_csv(root_sub_path, index=False)
     sub_df.to_csv(results_sub_path, index=False)
 
     print(f"\nFinal submission successfully written to:")
-    print(f"  -> {os.path.abspath(root_sub_path)}")
     print(f"  -> {os.path.abspath(results_sub_path)}")
 
     # Print model comparison scorecard
